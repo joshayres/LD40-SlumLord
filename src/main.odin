@@ -3,8 +3,6 @@ import "core:strings.odin";
 import "shared:glfw.odin";
 import "shared:gl.odin";
 import "shared:font.odin";
-import "shared:odin-al/al.odin"
-import "shared:odin-al/alc.odin"
 
 import "shader.odin"
 import "math.odin";
@@ -16,6 +14,10 @@ keys: [348]bool = {false};
 
 HouseState ::  enum{
 	OK, GRASS, WATER, ROOF, PAINT, HEAT, 
+}
+
+GAMESTATE :: enum{
+	MENU, PLAY, LOSE,
 }
 
 house :: struct{
@@ -30,6 +32,93 @@ house :: struct{
 	state: HouseState,
 
 	owned: bool,
+}
+
+gui :: struct{
+	size : math.v2,
+	mesh, b_mesh: va.vertex_array,
+	tex: t.texture,
+	pos: math.v2,
+	str: string,
+}
+
+CreateGui :: proc(size, pos : math.v2, str: string) -> gui{
+	result: gui;
+
+	gl_pos := [...]f32{
+		-result.size.x / 2.0, -result.size.y / 2,
+		-result.size.x / 2.0, result.size.y / 2,
+		result.size.x / 2.0, result.size.y / 2,
+		result.size.x / 2.0, -result.size.y / 2,	
+	};
+
+	indices := [...]byte{
+		0,1,2,
+		2,3,0
+	};
+
+	tcs := [...]f32{
+		0,1,
+		0,0,
+		1,0,
+		1,1
+	};
+
+	result.mesh = va.CreateVAO(gl_pos, indices, tcs);
+
+	result.tex = t.LoadTexture("Art/button.png");
+	result.pos = pos;
+	result.str = str;
+
+	return result;
+}
+
+Menu :: proc(prog: u32) -> GAMESTATE{
+	play := CreateGui(math.v2{4, 4}, math.v2{0, 7}, "To Play Press Enter!");
+
+	gl.UseProgram(prog);
+	uniform_infos := gl.get_uniforms_from_program(prog);
+	shader.setUniformMat4(uniform_infos["ml_matrix"].location, math.TranslateMat4(play.pos));
+	t.BindTexture(play.tex);
+	va.Render(play.mesh);
+	t.UnbindTexture();
+	gl.UseProgram(0);
+
+	colors_font := font.get_colors();
+	for i in 0..4 do colors_font[i] = font.Vec4{1.0, 1.0, 1.0, 1.0};
+	        
+	font.update_colors(4);
+
+	font.draw_string(1600/2 - 100, 900/2 - 50, 12.0, "Press Enter To PLAY!!!");
+
+	if keys[glfw.KEY_ENTER]{
+		return GAMESTATE.PLAY;
+	}
+	return GAMESTATE.MENU;
+}
+
+Lose :: proc(prog: u32) -> GAMESTATE{
+	play := CreateGui(math.v2{4, 4}, math.v2{0, 7}, "To Play Press Enter!");
+
+	gl.UseProgram(prog);
+	uniform_infos := gl.get_uniforms_from_program(prog);
+	shader.setUniformMat4(uniform_infos["ml_matrix"].location, math.TranslateMat4(play.pos));
+	t.BindTexture(play.tex);
+	va.Render(play.mesh);
+	t.UnbindTexture();
+	gl.UseProgram(0);
+
+	colors_font := font.get_colors();
+	for i in 0..4 do colors_font[i] = font.Vec4{1.0, 1.0, 1.0, 1.0};
+	        
+	font.update_colors(4);
+
+	font.draw_string(1600/2 - 100, 900/2 - 50, 12.0, "Press Enter To Play Again!!!");
+
+	if keys[glfw.KEY_ENTER]{
+		return GAMESTATE.PLAY;
+	}
+	return GAMESTATE.LOSE;
 }
 
 CreateHouse :: proc(v: math.v2, pay: f32, owned: bool) -> house{
@@ -112,7 +201,7 @@ RenderHouse :: proc(h: house, prog: u32){
 UpdateHouse :: proc(h: ^house, money: f32, number: i32) -> f32{
 	if h.owned == true{
 		if(h.state == HouseState.OK){
-			test := rand.random(500, i32(glfw.GetTime()));
+			test := rand.random(500, (number + 1) * 2 * i32(glfw.GetTime()));
 			if(test < 375){
 				h.state = HouseState.OK;
 			}else if(test < 425){
@@ -126,30 +215,39 @@ UpdateHouse :: proc(h: ^house, money: f32, number: i32) -> f32{
 			}
 		}
 
-		if h.state == HouseState.GRASS{
-			if keys[glfw.KEY_G] && keys[number + 49]{
+		if keys[glfw.KEY_G] && keys[number + 49]{
+			if h.state == HouseState.GRASS{
 				h.state = HouseState.OK;
 				money += 100.0;
-			}
+			}else do
+				money -= 100.0;
 		}
-		if h.state == HouseState.WATER{
-			if keys[glfw.KEY_W] && keys[number + 49]{
+
+		if keys[glfw.KEY_W] && keys[number + 49]{
+			if h.state == HouseState.WATER{
 				h.state = HouseState.OK;
 				money += 500.0;
-			}
+			}else do
+				money -= 100.0;
 		}
-		if h.state == HouseState.HEAT{
-			if keys[glfw.KEY_H] && keys[number + 49]{
+
+		if keys[glfw.KEY_H] && keys[number + 49]{
+			if h.state == HouseState.HEAT{
 				h.state = HouseState.OK;
 				money += 500.0;
-			}
+			}else do
+				money -= 100.0;
 		}
-		if h.state == HouseState.ROOF{
-			if keys[glfw.KEY_R] && keys[number + 49]{
+
+		if keys[glfw.KEY_R] && keys[number + 49]{
+			if h.state == HouseState.ROOF{
 				h.state = HouseState.OK;
 				money += 1000.0;
-			}
+			}else do
+				money -= 100.0;
 		}
+		
+		
 
 		h.pay_time -= 1;
 		if h.pay_time <= 0 {
@@ -157,7 +255,7 @@ UpdateHouse :: proc(h: ^house, money: f32, number: i32) -> f32{
 			if h.state == HouseState.OK{
 				money += h.pay;
 			}else{
-				money -= 2500.0;
+				money -= 2000.0;
 			}
 		}
 	}
@@ -230,15 +328,15 @@ main :: proc() {
 	h[0]= CreateHouse(math.v2{-14, 6}, 680.0, true);
 	h[1]= CreateHouse(math.v2{-8, 6.5}, 800.0, false);
 	h[2]= CreateHouse(math.v2{-3.5, 4.5}, 1000.0, false);
-	h[3]= CreateHouse(math.v2{0, 2}, 1240.0, false);
-	h[4]= CreateHouse(math.v2{4, 1.5}, 1400.0, false);
-	h[5]= CreateHouse(math.v2{8, -2}, 1680.0, false);
-	h[6]= CreateHouse(math.v2{12, -4}, 1900.0, false);
+	h[3]= CreateHouse(math.v2{0, 3}, 1240.0, false);
+	h[4]= CreateHouse(math.v2{4, 1}, 1400.0, false);
+	h[5]= CreateHouse(math.v2{8, -0.4}, 1680.0, false);
+	h[6]= CreateHouse(math.v2{11, -4}, 1900.0, false);
 	h[7]= CreateHouse(math.v2{7.5, -6}, 2240.0, false);
 	h[8]= CreateHouse(math.v2{0, -7}, 2560.0, false);
-	h[9]= CreateHouse(math.v2{-4, -7.5}, 3000.0, false);
+	h[9]= CreateHouse(math.v2{-34.1, -7.5}, 3000.0, false);
 
-	money : f32 = 20000.0;
+	money : f32 = 15000.0;
 
 	pos := [...]f32{
 		-16, -9,
@@ -265,36 +363,58 @@ main :: proc() {
 
 	owned := 1;
 
+	game_state := GAMESTATE.MENU;
+
 	for glfw.WindowShouldClose(window) == glfw.FALSE {
 		
 		clear();
 		glfw.PollEvents();
 
-		gl.UseProgram(bg_program);
-		t.BindTexture(bgt);
-		va.Render(bg);
-		t.UnbindTexture();
-		gl.UseProgram(0);
+		if game_state == GAMESTATE.PLAY{
+			gl.UseProgram(bg_program);
+			t.BindTexture(bgt);
+			va.Render(bg);
+			t.UnbindTexture();
+			gl.UseProgram(0);
 
-		for i in 0..owned{
-			RenderHouse(h[i], h_program);
-			money = UpdateHouse(&h[i], money, i32(i));
-		}
-		colors_font := font.get_colors();
-        for i in 0..4 do colors_font[i] = font.Vec4{1.0, 1.0, 1.0, 1.0};
-        
-		font.update_colors(4);
+			for i in 0..owned{
+				RenderHouse(h[i], h_program);
+				money = UpdateHouse(&h[i], money, i32(i));
+			}
+			colors_font := font.get_colors();
+	        for i in 0..4 do colors_font[i] = font.Vec4{1.0, 1.0, 1.0, 1.0};
+	        
+			font.update_colors(4);
 
-		font.draw_format(0, 0, 12.0, "Money : $%f", money);
+			font.draw_format(0, 0, 12.0, "Money : $%f", money);
 
-		if money >= 10000.0 && keys[glfw.KEY_B] && owned < 10{
-			owned += 1;
-			money -= 10000.0;
-			h[owned].owned = true;
-		}
+			if money >= 10000.0 && keys[glfw.KEY_B] && owned < 8{
+				owned += 1;
+				money -= 10000.0;
+				h[owned].owned = true;
+			}
 
-		if money < 0{
-			fmt.printf("You Loose!!!");
+			if money < 0{
+				game_state = GAMESTATE.LOSE;
+			}
+		}else if game_state == GAMESTATE.MENU{
+			gl.UseProgram(bg_program);
+			t.BindTexture(bgt);
+			va.Render(bg);
+			t.UnbindTexture();
+			gl.UseProgram(0);
+
+			game_state = Menu(h_program);
+		}else if game_state == GAMESTATE.LOSE{
+			gl.UseProgram(bg_program);
+			t.BindTexture(bgt);
+			va.Render(bg);
+			t.UnbindTexture();
+			gl.UseProgram(0);
+
+			game_state = Lose(h_program);
+			money = 15000.0;
+			owned = 1;
 		}
 
 		glfw.SwapBuffers(window);
